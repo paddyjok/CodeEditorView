@@ -111,34 +111,34 @@ extension CodeStorage {
     /// - Parameter linetoken: The line token whose colour is desired.
     /// - Returns: The theme colour of the given line token.
     ///
-    func colour(for linetoken: LineToken) -> OSColor {
-        switch linetoken.kind {
-        case .comment: theme.commentColour
-        case .token(let token):
-            switch token {
-            case .string: theme.stringColour
-            case .character: theme.characterColour
-            case .number: theme.numberColour
-            case .identifier(let flavour):
-                switch flavour {
-                case .type: theme.typeColour
-                case .property: theme.fieldColour
-                case .enumCase: theme.caseColour
-                default: theme.identifierColour
-                }
-            case .operator(let flavour):
-                switch flavour {
-                case .type: theme.typeColour
-                case .property: theme.fieldColour
-                case .enumCase: theme.caseColour
-                default: theme.operatorColour
-                }
-            case .keyword: theme.keywordColour
-            case .symbol: theme.symbolColour
-            default: theme.textColour
-            }
-        }
-    }
+//    func colour(for linetoken: LineToken) -> OSColor {
+//        switch linetoken.kind {
+//        case .comment: theme.commentColour
+//        case .token(let token):
+//            switch token {
+//            case .string: theme.stringColour
+//            case .character: theme.characterColour
+//            case .number: theme.numberColour
+//            case .identifier(let flavour):
+//                switch flavour {
+//                case .type: theme.typeColour
+//                case .property: theme.fieldColour
+//                case .enumCase: theme.caseColour
+//                default: theme.identifierColour
+//                }
+//            case .operator(let flavour):
+//                switch flavour {
+//                case .type: theme.typeColour
+//                case .property: theme.fieldColour
+//                case .enumCase: theme.caseColour
+//                default: theme.operatorColour
+//                }
+//            case .keyword: theme.keywordColour
+//            case .symbol: theme.symbolColour
+//            default: theme.textColour
+//            }
+//        }
+//    }
 
     // FIXME: We might want to change the interface here to set attributes per line. This will also make token enumeration simpler.
     /// Set rendering attributes to implement token-based highlighting,
@@ -360,55 +360,55 @@ extension CodeStorage {
     /// - Returns: If `location` is inside a comment, return the range of the comment, clamped to line bounds, but in
     ///     terms of teh entire text.
     ///
-    func comment(at location: Int) -> NSRange? {
-        guard let lineMap = (delegate as? CodeStorageDelegate)?.lineMap,
-            let line = lineMap.lineContaining(index: location),
-            let lineInfo = lineMap.lookup(line: line),
-            let commentRanges = lineInfo.info?.commentRanges
-        else { return nil }
-
-        let column = location - lineInfo.range.location
-        for commentRange in commentRanges {
-            if column < commentRange.location {
-                return nil
-            } else if commentRange.contains(column) {
-                return commentRange.shifted(by: lineInfo.range.location)
-            }
-        }
-        return nil
-    }
+//    func comment(at location: Int) -> NSRange? {
+//        guard let lineMap = (delegate as? CodeStorageDelegate)?.lineMap,
+//            let line = lineMap.lineContaining(index: location),
+//            let lineInfo = lineMap.lookup(line: line),
+//            let commentRanges = lineInfo.info?.commentRanges
+//        else { return nil }
+//
+//        let column = location - lineInfo.range.location
+//        for commentRange in commentRanges {
+//            if column < commentRange.location {
+//                return nil
+//            } else if commentRange.contains(column) {
+//                return commentRange.shifted(by: lineInfo.range.location)
+//            }
+//        }
+//        return nil
+//    }
 
     /// Token representation for token enumeration, which includes simple tokens and comment spans.
     ///
     /// NB: In this representation tokens and comments never extend across lines.
     ///
-    struct LineToken {
-        enum Kind {
-            case comment
-            case token(LanguageConfiguration.Token)
-        }
-
-        /// Token range, relative to the start of the document.
-        ///
-        let range: NSRange
-
-        /// Token start position, relative to the line on which the token is located.
-        ///
-        let column: Int
-
-        /// The kind of token.
-        ///
-        let kind: Kind
-
-        /// Whether the line token represents a comment.
-        ///
-        var isComment: Bool {
-            switch kind {
-            case .comment: true
-            default: false
-            }
-        }
-    }
+//    struct LineToken {
+//        enum Kind {
+//            case comment
+//            case token(LanguageConfiguration.Token)
+//        }
+//
+//        /// Token range, relative to the start of the document.
+//        ///
+//        let range: NSRange
+//
+//        /// Token start position, relative to the line on which the token is located.
+//        ///
+//        let column: Int
+//
+//        /// The kind of token.
+//        ///
+//        let kind: Kind
+//
+//        /// Whether the line token represents a comment.
+//        ///
+//        var isComment: Bool {
+//            switch kind {
+//            case .comment: true
+//            default: false
+//            }
+//        }
+//    }
 
     /// Enumerate tokens and comment spans from the given location onwards.
     ///
@@ -419,98 +419,98 @@ extension CodeStorage {
     /// The first enumerated token may have a starting location smaller than `location` (but it will extent until at least
     /// `location`). Enumeration proceeds until the end of the document or until `block` returns `false`.
     ///
-    func enumerateTokens(from location: Int, using block: (LineToken) -> Bool) {
-
-        // Enumerate the comemnt ranges and tokens on one line and optionally skip everything before a given start
-        // location. We can have tokens inside comment ranges. These tokens are being skipped. (We don't highlight inside
-        // comments, so far.) If a token and a comment begin at the same location, the comment takes precedence.
-        func enumerate(
-            tokens: [LanguageConfiguration.Tokeniser.Token],
-            commentRanges: [NSRange],
-            lineStart: Int,
-            startLocation: Int?
-        )
-            -> Bool
-        {
-            var skipUntil: Int? = startLocation  // tokens from this location onwards (even in part) are enumerated
-
-            var tokens = tokens
-            var commentRanges = commentRanges
-            while !tokens.isEmpty || !commentRanges.isEmpty {
-
-                let token = tokens.first
-                let commentRange = commentRanges.first
-                if let token,
-                    (commentRange?.location ?? Int.max) > token.range.location
-                {
-
-                    if skipUntil ?? 0 <= token.range.max - 1,
-                        let range = token.range.shifted(by: lineStart)
-                    {
-                        let doContinue = block(
-                            LineToken(
-                                range: range,
-                                column: token.range.location,
-                                kind: .token(token.token)
-                            )
-                        )
-                        if !doContinue { return false }
-                    }
-                    tokens.removeFirst()
-
-                } else if let commentRange {
-
-                    if skipUntil ?? 0 <= commentRange.max - 1,
-                        let range = commentRange.shifted(by: lineStart)
-                    {
-                        let doContinue = block(
-                            LineToken(
-                                range: range,
-                                column: commentRange.location,
-                                kind: .comment
-                            )
-                        )
-                        if !doContinue { return false }
-                        skipUntil = commentRange.max  // skip tokens within the comment range
-                    }
-                    commentRanges.removeFirst()
-                }
-            }
-            return true
-        }
-
-        guard let lineMap = (delegate as? CodeStorageDelegate)?.lineMap,
-            let startLine = lineMap.lineContaining(index: location)
-        else { return }
-
-        let firstLine = lineMap.lines[startLine]
-        if let info = firstLine.info {
-
-            let doContinue = enumerate(
-                tokens: info.tokens,
-                commentRanges: info.commentRanges,
-                lineStart: firstLine.range.location,
-                startLocation: location - firstLine.range.location
-            )
-            if !doContinue { return }
-
-        }
-
-        for line in lineMap.lines[startLine + 1..<lineMap.lines.count] {
-
-            if let info = line.info {
-
-                let doContinue = enumerate(
-                    tokens: info.tokens,
-                    commentRanges: info.commentRanges,
-                    lineStart: line.range.location,
-                    startLocation: nil
-                )
-                if !doContinue { return }
-
-            }
-        }
-    }
+//    func enumerateTokens(from location: Int, using block: (LineToken) -> Bool) {
+//
+//        // Enumerate the comemnt ranges and tokens on one line and optionally skip everything before a given start
+//        // location. We can have tokens inside comment ranges. These tokens are being skipped. (We don't highlight inside
+//        // comments, so far.) If a token and a comment begin at the same location, the comment takes precedence.
+//        func enumerate(
+//            tokens: [LanguageConfiguration.Tokeniser.Token],
+//            commentRanges: [NSRange],
+//            lineStart: Int,
+//            startLocation: Int?
+//        )
+//            -> Bool
+//        {
+//            var skipUntil: Int? = startLocation  // tokens from this location onwards (even in part) are enumerated
+//
+//            var tokens = tokens
+//            var commentRanges = commentRanges
+//            while !tokens.isEmpty || !commentRanges.isEmpty {
+//
+//                let token = tokens.first
+//                let commentRange = commentRanges.first
+//                if let token,
+//                    (commentRange?.location ?? Int.max) > token.range.location
+//                {
+//
+//                    if skipUntil ?? 0 <= token.range.max - 1,
+//                        let range = token.range.shifted(by: lineStart)
+//                    {
+//                        let doContinue = block(
+//                            LineToken(
+//                                range: range,
+//                                column: token.range.location,
+//                                kind: .token(token.token)
+//                            )
+//                        )
+//                        if !doContinue { return false }
+//                    }
+//                    tokens.removeFirst()
+//
+//                } else if let commentRange {
+//
+//                    if skipUntil ?? 0 <= commentRange.max - 1,
+//                        let range = commentRange.shifted(by: lineStart)
+//                    {
+//                        let doContinue = block(
+//                            LineToken(
+//                                range: range,
+//                                column: commentRange.location,
+//                                kind: .comment
+//                            )
+//                        )
+//                        if !doContinue { return false }
+//                        skipUntil = commentRange.max  // skip tokens within the comment range
+//                    }
+//                    commentRanges.removeFirst()
+//                }
+//            }
+//            return true
+//        }
+//
+//        guard let lineMap = (delegate as? CodeStorageDelegate)?.lineMap,
+//            let startLine = lineMap.lineContaining(index: location)
+//        else { return }
+//
+//        let firstLine = lineMap.lines[startLine]
+//        if let info = firstLine.info {
+//
+//            let doContinue = enumerate(
+//                tokens: info.tokens,
+//                commentRanges: info.commentRanges,
+//                lineStart: firstLine.range.location,
+//                startLocation: location - firstLine.range.location
+//            )
+//            if !doContinue { return }
+//
+//        }
+//
+//        for line in lineMap.lines[startLine + 1..<lineMap.lines.count] {
+//
+//            if let info = line.info {
+//
+//                let doContinue = enumerate(
+//                    tokens: info.tokens,
+//                    commentRanges: info.commentRanges,
+//                    lineStart: line.range.location,
+//                    startLocation: nil
+//                )
+//                if !doContinue { return }
+//
+//            }
+//        }
+//    }
 
     /// Enumerate tokens and comment spans in the given range.
     ///
@@ -519,13 +519,13 @@ extension CodeStorage {
     ///       outside the given range.
     ///   - block: A block invoked foro every range.
     ///
-    func enumerateTokens(in range: NSRange, using block: (LineToken) -> Void) {
-        enumerateTokens(from: range.location) { token in
-
-            block(token)
-            return token.range.max < range.max
-        }
-    }
+//    func enumerateTokens(in range: NSRange, using block: (LineToken) -> Void) {
+//        enumerateTokens(from: range.location) { token in
+//
+//            block(token)
+//            return token.range.max < range.max
+//        }
+//    }
 
     /// Return all tokens in the given range.
     ///
@@ -533,11 +533,11 @@ extension CodeStorage {
     /// - Returns: An array containing the tokens in the range, where first and last token may extend left and right
     ///     outside the given range.
     ///
-    func tokens(in range: NSRange) -> [LineToken] {
-        var tokens: [LineToken] = []
-        enumerateTokens(in: range) { tokens.append($0) }
-        return tokens
-    }
+//    func tokens(in range: NSRange) -> [LineToken] {
+//        var tokens: [LineToken] = []
+//        enumerateTokens(in: range) { tokens.append($0) }
+//        return tokens
+//    }
 
     /// If the given location is just past a bracket, return its matching bracket's token range if it exists and the
     /// matching bracket is within the given range of lines.
