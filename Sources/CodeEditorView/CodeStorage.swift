@@ -6,18 +6,9 @@
 //  This file contains `NSTextStorage` extensions for code editing.
 
 import LanguageSupport
+import UIKit
 
-#if os(iOS) || os(visionOS)
-    import UIKit
-#elseif os(macOS)
-    import AppKit
-#endif
-
-#if os(iOS) || os(visionOS)
-    typealias EditActions = NSTextStorage.EditActions
-#elseif os(macOS)
-    typealias EditActions = NSTextStorageEditActions
-#endif
+typealias EditActions = NSTextStorage.EditActions
 
 // MARK: -
 // MARK: `NSTextStorage` subclass
@@ -40,18 +31,6 @@ class CodeStorage: NSTextStorage {
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-
-    #if os(macOS)
-        @available(*, unavailable)
-        required init?(
-            pasteboardPropertyList propertyList: Any,
-            ofType type: NSPasteboard.PasteboardType
-        ) {
-            fatalError(
-                "init(pasteboardPropertyList:ofType:) has not been implemented"
-            )
-        }
-    #endif
 
     // MARK: Interface to override for subclass
 
@@ -172,37 +151,61 @@ extension CodeStorage {
     ///       towards performing the setting of attributes on a line by line bases (or rather a text layout fragment per
     ///       text layout fragment basis).
     ///
-    func setHighlightingAttributes(
-        for range: NSRange,
-        in layoutManager: NSTextLayoutManager
-    ) {
-        print("EDITOR: setHighlightingAttributes(for: \(range) in:)")
-
-        guard
-            let contentStorage = layoutManager.textContentManager
-                as? NSTextContentStorage
-        else { return }
+//    func setHighlightingAttributes(for range: NSRange, in layoutManager: NSTextLayoutManager) {
+//        print("EDITOR: setHighlightingAttributes(for: \(range) in:)")
+//
+//        guard let contentStorage = layoutManager.textContentManager as? NSTextContentStorage else { return }
+//
+//        // set the default attributes for the entire range
+//        if let textRange = contentStorage.textRange(for: range) {
+//            layoutManager.setRenderingAttributes([.foregroundColor: theme.textColour, .hideInvisibles: ()], for: textRange)
+//        }
+//
+//        enumerateTokens(in: range) { lineToken in
+//
+//            print("    EDITOR: enumerateTokens(in:) { \(lineToken)")
+//
+//            if let documentRange = lineToken.range.intersection(range), let textRange = contentStorage.textRange(for: documentRange) {
+//                let colour = colour(for: lineToken)
+//                layoutManager.setRenderingAttributes([.foregroundColor: colour], for: textRange)
+//            }
+//        }
+//    }
+    
+    func updateHighlightingAttributes(for range: NSRange, in layoutManager: NSTextLayoutManager) {
+        print("EDITOR: updateHighlightingAttributes(for: \(range) in:)")
+        
+        guard let contentStorage = layoutManager.textContentManager as? NSTextContentStorage else { return }
 
         // set the default attributes for the entire range
         if let textRange = contentStorage.textRange(for: range) {
-            layoutManager.setRenderingAttributes(
-                [.foregroundColor: theme.textColour, .hideInvisibles: ()],
-                for: textRange
-            )
+            layoutManager.setRenderingAttributes([.foregroundColor: theme.textColour, .hideInvisibles: ()], for: textRange)
         }
-
-        enumerateTokens(in: range) { lineToken in
-
-            print("    EDITOR: enumerateTokens(in:) { \(lineToken)")
-
-            if let documentRange = lineToken.range.intersection(range),
-                let textRange = contentStorage.textRange(for: documentRange)
-            {
-                let colour = colour(for: lineToken)
-                layoutManager.setRenderingAttributes(
-                    [.foregroundColor: colour],
-                    for: textRange
-                )
+        
+        enumerateCachedTokens(in: range) { token in
+            
+            if let intersectingRange = token.range.intersection(range), let textRange = contentStorage.textRange(for: intersectingRange) {
+                print("    EDITOR: enumerateCachedTokens(in:) { \(token), intersectingRange: \(intersectingRange), textRange: \(textRange)")
+                
+                let colour: UIColor = switch token.type {
+                    
+                case .comment:
+                    theme.commentColour
+                case .stringLiteral:
+                    theme.stringColour
+                case .identifier, .atIdentifier:
+                    theme.identifierColour
+                case .numberLiteral:
+                    theme.numberColour
+                case .keyword:
+                    theme.keywordColour
+                    
+                default:
+                    theme.textColour
+                }
+                layoutManager.setRenderingAttributes([.foregroundColor: colour], for: textRange)
+            } else {
+                print("    EDITOR: enumerateCachedTokens(in:) { \(token), no intersecting range")
             }
         }
     }
@@ -212,6 +215,48 @@ extension CodeStorage {
 // MARK: Token attributes
 
 extension CodeStorage {
+    
+    func firstTokenIndex(afterOrAt location: Int, in tokens: [PostgreSQLToken]) -> Int? {
+        var low = 0
+        var high = tokens.count - 1
+        var result: Int? = nil
+
+        while low <= high {
+            let mid = (low + high) / 2
+            let midLocation = tokens[mid].range.location
+
+            if midLocation >= location {
+                result = mid
+                high = mid - 1 // look for earlier match
+            } else {
+                low = mid + 1
+            }
+        }
+
+        return result
+    }
+    
+    func enumerateCachedTokens(from location: Int, using block: (PostgreSQLToken) -> Bool) {
+        guard let codeStorage = delegate as? CodeStorageDelegate else { return }
+                
+        if let firstIndex = firstTokenIndex(afterOrAt: location, in: codeStorage.cachedTokens) {
+            for token in codeStorage.cachedTokens[firstIndex...] {
+                let result = block(token)
+                if !result {
+                    break
+                }
+            }
+        }
+    }
+    
+    func enumerateCachedTokens(in range: NSRange, using block: (PostgreSQLToken) -> Void) {
+        enumerateCachedTokens(from: range.location) { token in
+            block(token)
+            return token.range.max < range.max
+        }
+    }
+    
+    
 
     /// Yield the token at the given position (column index) on the given line, if any.
     ///
@@ -580,13 +625,7 @@ extension CodeStorage {
 
 class CodeContentStorage: NSTextContentStorage {
 
-    override func processEditing(
-        for textStorage: NSTextStorage,
-        edited editMask: EditActions,
-        range newCharRange: NSRange,
-        changeInLength delta: Int,
-        invalidatedRange invalidatedCharRange: NSRange
-    ) {
+    override func processEditing(for textStorage: NSTextStorage, edited editMask: EditActions, range newCharRange: NSRange, changeInLength delta: Int, invalidatedRange invalidatedCharRange: NSRange) {
         // NB: It might seem that we can deal with the extended token invalidation range, given by
         //     `codeStorageDelegate.tokenInvalidationRange`, by extending `invalidatedCharRange` appropriately. While
         //      this triggers the appropriate redrawing on iOS, it is harmful for performance, as it invalidates the layout,
@@ -607,34 +646,20 @@ class CodeContentStorage: NSTextContentStorage {
 
         // NB: We need to wait until after the content storage has processed the edit before text locations (and ranges)
         //     match characters counts in the backing store again. Hence, the placement after the super call.
-        if let codeStorageDelegate = textStorage.delegate
-            as? CodeStorageDelegate,
-            let invalidationRange = codeStorageDelegate.tokenInvalidationRange,
-            let invalidationLines = codeStorageDelegate.tokenInvalidationLines
-        {
-            print(
-                "EDITOR: processEditing(edited: \(editMask) range: \(newCharRange) changeInLength: \(delta) invalidatedRange: \(invalidatedCharRange) invalidationRange: \(invalidationRange) invalidationLines: \(invalidationLines)"
-            )
+        if let codeStorageDelegate = textStorage.delegate as? CodeStorageDelegate, let invalidationRange = codeStorageDelegate.tokenInvalidationRange, let invalidationLines = codeStorageDelegate.tokenInvalidationLines {
+            
+            print("EDITOR: processEditing(edited: \(editMask) range: \(newCharRange) changeInLength: \(delta) invalidatedRange: \(invalidatedCharRange) invalidationRange: \(invalidationRange) invalidationLines: \(invalidationLines)")
 
-            let additionalInvalidationRange =
-                if invalidatedCharRange.location == invalidationRange.location {
-                    NSRange(
-                        location: invalidatedCharRange.max,
-                        length: invalidationRange.length
-                            - invalidatedCharRange.length
-                    )
-                } else { invalidationRange }
+            let additionalInvalidationRange = if invalidatedCharRange.location == invalidationRange.location {
+                NSRange(location: invalidatedCharRange.max, length: invalidationRange.length - invalidatedCharRange.length)
+            } else {
+                invalidationRange
+            }
 
-            if additionalInvalidationRange.length > 0 && invalidationLines > 1,
-                let additionalInvalidationTextRange = textRange(
-                    for: additionalInvalidationRange
-                )
-            {
+            if additionalInvalidationRange.length > 0 && invalidationLines > 1, let additionalInvalidationTextRange = textRange(for: additionalInvalidationRange) {
                 for textLayoutManager in textLayoutManagers {
-
-                    textLayoutManager.redisplayRenderingAttributes(
-                        for: additionalInvalidationTextRange
-                    )
+                    print("EDITOR: redisplayRenderingAttributes(for: \(additionalInvalidationTextRange))")
+                    textLayoutManager.redisplayRenderingAttributes(for: additionalInvalidationTextRange)
                 }
             }
         }

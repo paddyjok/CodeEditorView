@@ -31,31 +31,31 @@ private let logger = Logger(
 // MARK: Visual debugging support
 
 // FIXME: It should be possible to enable this via a defaults setting.
-private let visualDebugging = false
-private let visualDebuggingEditedColour = OSColor(
-    red: 0.5,
-    green: 1.0,
-    blue: 0.5,
-    alpha: 0.3
-)
-private let visualDebuggingLinesColour = OSColor(
-    red: 0.5,
-    green: 0.5,
-    blue: 1.0,
-    alpha: 0.3
-)
-private let visualDebuggingTrailingColour = OSColor(
-    red: 1.0,
-    green: 0.5,
-    blue: 0.5,
-    alpha: 0.3
-)
-private let visualDebuggingTokenColour = OSColor(
-    red: 1.0,
-    green: 0.0,
-    blue: 0.0,
-    alpha: 0.5
-)
+//private let visualDebugging = false
+//private let visualDebuggingEditedColour = OSColor(
+//    red: 0.5,
+//    green: 1.0,
+//    blue: 0.5,
+//    alpha: 0.3
+//)
+//private let visualDebuggingLinesColour = OSColor(
+//    red: 0.5,
+//    green: 0.5,
+//    blue: 1.0,
+//    alpha: 0.3
+//)
+//private let visualDebuggingTrailingColour = OSColor(
+//    red: 1.0,
+//    green: 0.5,
+//    blue: 0.5,
+//    alpha: 0.3
+//)
+//private let visualDebuggingTokenColour = OSColor(
+//    red: 1.0,
+//    green: 0.0,
+//    blue: 0.0,
+//    alpha: 0.5
+//)
 
 // MARK: -
 // MARK: Tokens
@@ -218,19 +218,16 @@ class CodeStorageDelegate: NSObject, NSTextStorageDelegate {
     /// only necessary on macOS and seems like a kludge.
     ///
     var tokenCompletionCharacters: Int = 0
+    
+    // the parsed tokens from the text
+    var cachedTokens: [PostgreSQLToken] = []
 
+    
     // MARK: Initialisers
 
-    init(
-        with language: LanguageConfiguration,
-        setText: @escaping (String) -> Void
-    ) {
+    init(with language: LanguageConfiguration, setText: @escaping (String) -> Void) {
         self.language = language
-        self.tokeniser = Tokeniser(
-            for: language.tokenDictionary,
-            caseInsensitiveReservedIdentifiers: language
-                .caseInsensitiveReservedIdentifiers
-        )
+        self.tokeniser = Tokeniser(for: language.tokenDictionary, caseInsensitiveReservedIdentifiers: language.caseInsensitiveReservedIdentifiers)
         self.setText = setText
         super.init()
     }
@@ -250,9 +247,7 @@ class CodeStorageDelegate: NSObject, NSTextStorageDelegate {
     /// This implies stopping any already running language service first. We don't do anything if target language
     /// configuration equals the current one.
     ///
-    func change(language: LanguageConfiguration, for codeStorage: CodeStorage)
-        async throws
-    {
+    func change(language: LanguageConfiguration, for codeStorage: CodeStorage) async throws {
         let currentLanguage = self.language
         guard language != currentLanguage else { return }
 
@@ -277,12 +272,12 @@ class CodeStorageDelegate: NSObject, NSTextStorageDelegate {
 
     // MARK: Delegate methods
 
-    func textStorage(
-        _ textStorage: NSTextStorage,
-        willProcessEditing editedMask: TextStorageEditActions,
-        range editedRange: NSRange,
-        changeInLength delta: Int
-    ) {
+    
+    // here we are
+    func textStorage(_ textStorage: NSTextStorage, willProcessEditing editedMask: TextStorageEditActions, range editedRange: NSRange, changeInLength delta: Int) {
+        
+        print("EDITOR: textStorage:willProcessEditing: \(editedMask), range: \(editedRange), delta: \(delta)")
+        
         func messageAffectedByEditFor(line: Int) -> Bool {
             // `true` iff the affected range of each message is in its entirety before (to the left) of the `editedRange`.
             if let (range, info) = lineMap.lookup(line: line) {
@@ -301,22 +296,11 @@ class CodeStorageDelegate: NSObject, NSTextStorageDelegate {
         // If only attributes change, the line map and syntax highlighting remains the same => nothing for us to do
         guard editedMask.contains(.editedCharacters) else { return }
 
-        // FIXME: This (and the rest of visual debugging) needs to be rewritten to use rendering attributes.
-        if visualDebugging {
-            let wholeTextRange = NSRange(
-                location: 0,
-                length: textStorage.length
-            )
-            textStorage.removeAttribute(.backgroundColor, range: wholeTextRange)
-            textStorage.removeAttribute(.underlineColor, range: wholeTextRange)
-            textStorage.removeAttribute(.underlineStyle, range: wholeTextRange)
-        }
-
-        // Determine the ids of message bundles that are invalidated by this edit.
-        let lines = lineMap.linesAffected(
-            by: editedRange,
-            changeInLength: delta
-        )
+        // get the lines that are affected by the edit
+        let lines = lineMap.linesAffected(by: editedRange, changeInLength: delta)
+        print("EDITOR:     lines affected by edit: \(lines)")
+        
+        // determine the ids of message bundles that are invalidated by this edit.
         lastInvalidatedMessageIDs = lines.compactMap { line in
             if line == lines.first {
                 if messageAffectedByEditFor(line: line) {
@@ -329,23 +313,38 @@ class CodeStorageDelegate: NSObject, NSTextStorageDelegate {
             }
         }
 
-        let endColumn =
-            if let beforeLine = lines.last,
-                let beforeLineInfo = lineMap.lookup(line: beforeLine)
-            {
-                editedRange.max - delta - beforeLineInfo.range.location
-            } else { 0 }
+        // FIXME: used for LanguageService stuff below - can this be moved down there ???
+        let endColumn = if let beforeLine = lines.last, let beforeLineInfo = lineMap.lookup(line: beforeLine) {
+            editedRange.max - delta - beforeLineInfo.range.location
+        } else {
+            0
+        }
 
-        lineMap.updateAfterEditing(
-            string: textStorage.string,
-            range: editedRange,
-            changeInLength: delta
-        )
-        var (affectedRange:highlightingRange, lines:highlightingLines) =
-            tokenise(range: editedRange, in: textStorage)
+        lineMap.updateAfterEditing(string: textStorage.string, range: editedRange, changeInLength: delta)
+        
+        // here is where we do the parse of the content
+        var (affectedRange:highlightingRange, lines:highlightingLines) = tokenise(range: editedRange, in: textStorage)
+        
+        let content = textStorage.string
+        
+        let lexer = PostgresLexer(script: content, keywords: PostgresKeyWords.allKeywordsDictionary, returnComments: true)
+        do {
+            let allTokens = try lexer.allTokens()
 
-        processingStringReplacement =
-            editedRange == NSRange(location: 0, length: textStorage.length)
+            self.cachedTokens = allTokens.map({ pst in
+                let range = NSRange(pst.location.startIndex..<pst.location.endIndex, in: pst.location.inString)
+                return PostgreSQLToken(type: pst.tokenType, range: range)
+            })
+
+            print("EDITOR:     parsed \(allTokens.count) tokens from content")
+            
+        } catch {
+            print("Tokenizer: Error parsing tokens - \(error)")
+        }
+        
+        print("EDITOR:     highlightingRange: \(highlightingRange), highlightingLines: \(highlightingLines)")
+        
+        processingStringReplacement = editedRange == NSRange(location: 0, length: textStorage.length)
 
         // If a single character was added, process token-level completion steps (and remember that we are processing a
         // one character addition).
@@ -354,10 +353,7 @@ class CodeStorageDelegate: NSObject, NSTextStorageDelegate {
         var delta = delta
         if processingOneCharacterAddition {
 
-            tokenCompletionCharacters = tokenCompletion(
-                for: codeStorage,
-                at: editedRange.location
-            )
+            tokenCompletionCharacters = tokenCompletion(for: codeStorage, at: editedRange.location)
             if tokenCompletionCharacters > 0 {
 
                 // Update line map with completion characters.
@@ -391,14 +387,6 @@ class CodeStorageDelegate: NSObject, NSTextStorageDelegate {
         tokenInvalidationRange = highlightingRange
         tokenInvalidationLines = highlightingLines
 
-        if visualDebugging {
-            textStorage.addAttribute(
-                .backgroundColor,
-                value: visualDebuggingEditedColour,
-                range: editedRange
-            )
-        }
-
         // MARK: [Note Propagating text changes into SwiftUI]
         // We need to trigger the propagation of text changes via the binding passed to the `CodeEditor` view here and *not*
         // in the `NSTextViewDelegate` or `UITextViewDelegate`. The reason for this is the composition of characters with
@@ -419,20 +407,18 @@ class CodeStorageDelegate: NSObject, NSTextStorageDelegate {
         if !skipNextChangeNotificationToLanguageService {
 
             // Notify language service (if attached)
-            let text = (textStorage.string as NSString).substring(
-                with: editedRange
-            )
+            let text = (textStorage.string as NSString).substring(with: editedRange)
             let afterLine = lineMap.lineOf(index: editedRange.max)
-            let lineChange =
-                if let afterLine,
-                    let beforeLine = lines.last
-                { afterLine - beforeLine } else { 0 }
-            let columnChange =
-                if let afterLine,
-                    let info = lineMap.lookup(line: afterLine)
-                {
-                    editedRange.max - info.range.location - endColumn
-                } else { 0 }
+            let lineChange = if let afterLine, let beforeLine = lines.last {
+                afterLine - beforeLine
+            } else {
+                0
+            }
+            let columnChange = if let afterLine, let info = lineMap.lookup(line: afterLine) {
+                editedRange.max - info.range.location - endColumn
+            } else {
+                0
+            }
             Task { [editedRange, delta] in
                 try await languageService?.documentDidChange(
                     position: editedRange.location,
@@ -541,19 +527,11 @@ extension CodeStorageDelegate {
     /// Tokenisation happens at line granularity. Hence, the range is correspondingly extended. Moreover, tokens must not
     /// span across lines as they will always only associated with the line on which they start.
     ///
-    func tokenise(range originalRange: NSRange, in textStorage: NSTextStorage)
-        -> (affectedRange: NSRange, lines: Int)
-    {
+    func tokenise(range originalRange: NSRange, in textStorage: NSTextStorage) -> (affectedRange: NSRange, lines: Int) {
+        print("EDITOR: tokenise: \(originalRange)")
 
         // NB: The range property of the tokens is in terms of the entire text (not just `line`).
-        func tokeniseAndUpdateInfo<
-            Tokens: Collection<
-                Tokeniser<
-                    LanguageConfiguration.Token,
-                    LanguageConfiguration.State
-                >.Token
-            >
-        >(
+        func tokeniseAndUpdateInfo<Tokens: Collection<Tokeniser<LanguageConfiguration.Token,LanguageConfiguration.State>.Token>>(
             for line: Int,
             tokens: Tokens,
             commentDepth: inout Int,
@@ -562,41 +540,6 @@ extension CodeStorageDelegate {
         ) {
 
             if let lineRange = lineMap.lookup(line: line)?.range {
-
-                if visualDebugging {
-
-                    for token in tokens {
-                        textStorage.addAttribute(
-                            .underlineColor,
-                            value: visualDebuggingTokenColour,
-                            range: range
-                        )
-                        if token.range.length > 0 {
-                            textStorage.addAttribute(
-                                .underlineStyle,
-                                value: NSNumber(
-                                    value: NSUnderlineStyle.double.rawValue
-                                ),
-                                range: NSRange(
-                                    location: token.range.location,
-                                    length: 1
-                                )
-                            )
-                        }
-                        if token.range.length > 1 {
-                            textStorage.addAttribute(
-                                .underlineStyle,
-                                value: NSNumber(
-                                    value: NSUnderlineStyle.single.rawValue
-                                ),
-                                range: NSRange(
-                                    location: token.range.location + 1,
-                                    length: token.range.length - 1
-                                )
-                            )
-                        }
-                    }
-                }
 
                 let localisedTokens = tokens.map {
                     $0.shifted(by: -lineRange.location)
@@ -691,9 +634,7 @@ extension CodeStorageDelegate {
             }
         }
 
-        guard let tokeniser = tokeniser else {
-            return (affectedRange: originalRange, lines: 1)
-        }
+        guard let tokeniser = tokeniser else { return (affectedRange: originalRange, lines: 1) }
 
         // Extend the range to line boundaries. Because we cannot parse partial tokens, we at least need to go to word
         // boundaries, but because we have line bounded constructs like comments to the end of the line and it is easier to
@@ -701,39 +642,28 @@ extension CodeStorageDelegate {
         let lines = lineMap.linesContaining(range: originalRange)
         let range = lineMap.charRangeOf(lines: lines)
 
-        guard
-            let stringRange = Range<String.Index>(range, in: textStorage.string)
-        else { return (affectedRange: originalRange, lines: lines.count) }
+        guard let stringRange = Range<String.Index>(range, in: textStorage.string) else { return (affectedRange: originalRange, lines: lines.count) }
 
         // Determine the comment depth as determined by the preceeeding code. This is needed to determine the correct
         // tokeniser and to compute attribute information from the resulting tokens. NB: We need to get that info from
         // the previous line, because the line info of the current line was set to `nil` during updating the line map.
-        let initialCommentDepth =
-            lineMap.lookup(line: lines.startIndex - 1)?.info?.commentDepthEnd
-            ?? 0
+        let initialCommentDepth = lineMap.lookup(line: lines.startIndex - 1)?.info?.commentDepthEnd ?? 0
 
         // Set the token attribute in range.
-        let initialTokeniserState: LanguageConfiguration.State =
-            initialCommentDepth > 0
-            ? .tokenisingComment(initialCommentDepth) : .tokenisingCode
-        let tokens =
-            textStorage
-            .string[stringRange]
-            .tokenise(with: tokeniser, state: initialTokeniserState)
-            .map { $0.shifted(by: range.location) }  // adjust tokens to be relative to the whole `string`
+        let initialTokeniserState: LanguageConfiguration.State = initialCommentDepth > 0 ? .tokenisingComment(initialCommentDepth) : .tokenisingCode
+        
+        let tokens = textStorage.string[stringRange].tokenise(with: tokeniser, state: initialTokeniserState).map { $0.shifted(by: range.location) }  // adjust tokens to be relative to the whole `string`
 
-        let initialCurlyBracketDepth =
-            lineMap.lookup(line: lines.startIndex - 1)?.info?
-            .curlyBracketDepthEnd ?? 0
+//        print("EDITOR:     tokens: \(tokens)")
+        
+        let initialCurlyBracketDepth = lineMap.lookup(line: lines.startIndex - 1)?.info?.curlyBracketDepthEnd ?? 0
 
         // For all lines in range, collect the tokens line by line, while keeping track of nested comments
         //
         // - `lastCommentStart` keeps track of the last start of an *outermost* nested comment.
         //
         var commentDepth = initialCommentDepth
-        var lastCommentStart =
-            initialCommentDepth > 0
-            ? lineMap.lookup(line: lines.startIndex)?.range.location : nil
+        var lastCommentStart = initialCommentDepth > 0 ? lineMap.lookup(line: lines.startIndex)?.range.location : nil
         var curlyBracketDepth = initialCurlyBracketDepth
         var remainingTokens = tokens
         for line in lines {
@@ -809,19 +739,6 @@ extension CodeStorageDelegate {
         }
 
         requestSemanticTokens(for: lines, in: textStorage)
-
-        if visualDebugging {
-            textStorage.addAttribute(
-                .backgroundColor,
-                value: visualDebuggingTrailingColour,
-                range: highlightingRange
-            )
-            textStorage.addAttribute(
-                .backgroundColor,
-                value: visualDebuggingLinesColour,
-                range: range
-            )
-        }
 
         return (affectedRange: highlightingRange, lines: highlightingLines)
     }

@@ -185,52 +185,27 @@ typealias MessageViews = [LineInfo.MessageBundle.ID: MessageInfo]
             super.init(frame: frame, textContainer: codeContainer)
             codeContainer.textView = self
 
-            textLayoutManager.renderingAttributesValidator = {
-                (textLayoutManager, layoutFragment) in
-                print(
-                    "EDITOR: renderingAttributesValidator { \(layoutFragment)"
-                )
+            textLayoutManager.renderingAttributesValidator = { (textLayoutManager, layoutFragment) in
+//                print("EDITOR: renderingAttributesValidator { \(layoutFragment)")
 
-                guard
-                    let textContentStorage = textLayoutManager
-                        .textContentManager as? NSTextContentStorage
-                else {
-                    return
-                }
+                guard let textContentStorage = textLayoutManager.textContentManager as? NSTextContentStorage else { return }
 
-                if let viewPortRange = textLayoutManager
-                    .textViewportLayoutController.viewportRange
-                {
+                if let viewPortRange = textLayoutManager.textViewportLayoutController.viewportRange {
 
-                    let nsViewPortRange = textContentStorage.range(
-                        for: viewPortRange
-                    )
-                    let fragmentRange = textContentStorage.range(
-                        for: layoutFragment.rangeInElement
-                    )
+                    let nsViewPortRange = textContentStorage.range(for: viewPortRange)
+                    let fragmentRange = textContentStorage.range(for: layoutFragment.rangeInElement)
 
                     if nsViewPortRange.contains(fragmentRange) {
-                        print(
-                            "    EDITOR: viewPortRange: \(viewPortRange), nsViewPortRange: \(nsViewPortRange), fragmentRange: \(fragmentRange)"
-                        )
-                        codeStorage.setHighlightingAttributes(
-                            for: fragmentRange,
-                            in: textLayoutManager
-                        )
+                        print("    EDITOR: viewPortRange: \(viewPortRange), nsViewPortRange: \(nsViewPortRange), fragmentRange: \(fragmentRange)")
+//                        codeStorage.setHighlightingAttributes(for: fragmentRange, in: textLayoutManager)
+                        codeStorage.updateHighlightingAttributes(for: fragmentRange, in: textLayoutManager)
                     } else {
                         //                  print("    EDITOR: viewPortRange: \(viewPortRange) does not contain fragmentRange: \(fragmentRange)")
                     }
                 } else {
-                    let fragmentRange = textContentStorage.range(
-                        for: layoutFragment.rangeInElement
-                    )
-                    print(
-                        "    EDITOR: viewPortRange: nil, fragmentRange: \(fragmentRange)"
-                    )
-                    codeStorage.setHighlightingAttributes(
-                        for: fragmentRange,
-                        in: textLayoutManager
-                    )
+                    let fragmentRange = textContentStorage.range(for: layoutFragment.rangeInElement)
+                    print("    EDITOR: viewPortRange: nil, fragmentRange: \(fragmentRange)")
+                    codeStorage.updateHighlightingAttributes(for: fragmentRange, in: textLayoutManager)
                 }
             }
 

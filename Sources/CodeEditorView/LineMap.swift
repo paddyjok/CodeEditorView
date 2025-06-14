@@ -214,9 +214,7 @@ struct LineMap<LineInfo> {
     ///   - delta: The length increase of the edited string (negative if it got shorter).
     /// - Returns: The zero-based range of lines (of the original string) that is affected by the editing action.
     ///
-    func linesAffected(by editedRange: NSRange, changeInLength delta: Int)
-        -> Range<Int>
-    {
+    func linesAffected(by editedRange: NSRange, changeInLength delta: Int) -> Range<Int> {
 
         if let shiftedRange = editedRange.shifted(endBy: -delta) {
 
