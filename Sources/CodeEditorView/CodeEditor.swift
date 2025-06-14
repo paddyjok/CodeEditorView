@@ -221,7 +221,7 @@ extension CodeEditor {
 
         /// Show the minimap.
         ///
-        public var showMinimap: Bool
+//        public var showMinimap: Bool
 
         /// Determines whether line of text may extend beyond the width of the text area or are getting wrapped.
         ///
@@ -233,27 +233,28 @@ extension CodeEditor {
         ///   - showMinimap: Whether to show the minimap if possible. It may not be possible on all supported OSes.
         ///   - wrapText: Whether lines of text may extend beyond the width of the text area or are getting wrapped.
         ///
-        public init(showMinimap: Bool, wrapText: Bool) {
-            self.showMinimap = showMinimap
+        public init(/*showMinimap: Bool, */wrapText: Bool) {
+//            self.showMinimap = showMinimap
             self.wrapText = wrapText
         }
 
         public static let standard = LayoutConfiguration(
-            showMinimap: true,
+//            showMinimap: true,
             wrapText: true
         )
 
         // MARK: For 'RawRepresentable'
 
         public var rawValue: String {
-            "\(showMinimap ? "t" : "f")\(wrapText ? "t" : "f")"
+            //"\(showMinimap ? "t" : "f")\(wrapText ? "t" : "f")"
+            "\(wrapText ? "t" : "f")"
         }
 
         public init?(rawValue: String) {
             guard rawValue.count == 2
             else { return nil }
 
-            self.showMinimap = rawValue[rawValue.startIndex] == "t"
+//            self.showMinimap = rawValue[rawValue.startIndex] == "t"
             self.wrapText =
                 rawValue[rawValue.index(after: rawValue.startIndex)] == "t"
         }
