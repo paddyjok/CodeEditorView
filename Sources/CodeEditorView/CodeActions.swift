@@ -22,9 +22,32 @@ private let logger = Logger(subsystem: "org.justtesting.CodeEditorView", categor
 
 extension CodeView {
 
-  // TODO: Code actions still need to be implemented for iOS
-  func infoAction() {
-  }
+    // TODO: Code actions still need to be implemented for iOS
+    func infoAction() {
+    }
+    
+    /// Excplicitly user initiated completion action by a command or trigger character.
+    ///
+    func completionAction() {
+
+      // Stop any already running completion task
+      completionTask?.cancel()
+
+//      // If we already show the completion panel close it — we want the shortcut to toggle visbility. Otherwise,
+//      // initiate a completion task.
+//      if completionPanel.isKeyWindow {
+//
+//        completionPanel.close()
+//
+//      } else {
+//
+//        completionTask = Task {
+//          try await computeAndShowCompletions(at: selectedRange().location)
+//        }
+//
+//      }
+    }
+
 }
 
 

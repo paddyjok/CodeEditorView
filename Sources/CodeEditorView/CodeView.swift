@@ -139,6 +139,11 @@ final class CodeView: UITextView {
   /// Keeps track of the set of message views.
   ///
   var messageViews: MessageViews = [:]
+    
+    /// Cancellable task used to compute completions.
+    ///
+    var completionTask: Task<(), Error>?
+    
 
   /// Designated initializer for code views with a gutter.
   ///

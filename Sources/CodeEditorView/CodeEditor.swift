@@ -154,6 +154,7 @@ public struct CodeEditor {
 
         fileprivate var setActions: SetActions
         fileprivate var setInfo: SetInfo
+        
 
         /// In order to avoid update cycles, where view code tries to update SwiftUI state variables (such as the view's
         /// bindings) during a SwiftUI view update, we use `updatingView` as a flag that indicates whether the view is
@@ -573,6 +574,8 @@ extension EnvironmentValues {
                 setMessages: { context.coordinator.messages = $0 }
             )
 
+            context.coordinator.info.language = language.name
+            
             // NB: We are not setting `codeView.text` here. That will happen via `updateUIView(:)`.
             // This implies that we must take care to not report that initial updates as a change to any connected language
             // service.
@@ -603,10 +606,30 @@ extension EnvironmentValues {
             // Set the initial actions
             //
             // NB: It is important that the actions don't capture the code view strongly.
-            context.coordinator.actions = Actions(info: { [weak codeView] in
-                codeView?.infoAction()
-            })
+//            context.coordinator.actions = Actions(info: { [weak codeView] in
+//                codeView?.infoAction()
+//            })
 
+            context.coordinator.actions = Actions(
+                language: Actions.Language(name: language.name),
+                info: { [weak codeView] in codeView?.infoAction() },
+                completions: { [weak codeView] in codeView?.completionAction() }
+            )
+
+            let coordinator = context.coordinator
+            if let extraActions = codeView.optLanguageService?.extraActions
+                .value
+            {
+                coordinator.actions.language.extraActions = extraActions
+            }
+            coordinator.extraActionsCancellable = language.languageService?
+                .extraActions
+                .receive(on: DispatchQueue.main)
+                .sink { [coordinator] actions in
+
+                    coordinator.actions.language.extraActions = actions
+                }
+            
             return codeView
         }
 
@@ -677,8 +700,31 @@ extension EnvironmentValues {
             }
             // Equality on language configurations implies the same name and the same language service.
             if language != codeView.language {
+                
+                let languageServiceChanged =
+                    language.languageService
+                    !== codeView.language.languageService
+                
                 codeView.language = language
                 context.coordinator.info.language = language.name
+                
+                if languageServiceChanged {
+
+                    let coordinator = context.coordinator
+                    if let extraActions = codeView.optLanguageService?
+                        .extraActions.value
+                    {
+                        coordinator.actions.language.extraActions = extraActions
+                    }
+                    coordinator.extraActionsCancellable = language
+                        .languageService?.extraActions
+                        .receive(on: DispatchQueue.main)
+                        .sink { [coordinator] actions in
+
+                            coordinator.actions.language.extraActions = actions
+                        }
+
+                }
             }
         }
 
@@ -693,6 +739,7 @@ extension EnvironmentValues {
         }
 
         public final class Coordinator: _Coordinator {
+            var extraActionsCancellable: Cancellable?
 
             // Update of `self.text` happens in `CodeStorageDelegate` — see [Note Propagating text changes into SwiftUI].
             func textDidChange(_ textView: UITextView) {}
