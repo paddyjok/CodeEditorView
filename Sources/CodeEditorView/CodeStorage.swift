@@ -257,7 +257,10 @@ extension CodeStorage {
     }
     
     
-
+    
+    
+    
+    
     /// Yield the token at the given position (column index) on the given line, if any.
     ///
     /// - Parameters:
@@ -267,9 +270,7 @@ extension CodeStorage {
     ///     respectively, in the entire text. (The range in the token is its line range, whereas the `effectiveRange`
     ///     is relative to the entire text storage.)
     ///
-    func token(on line: Int, at position: Int) -> (
-        token: LanguageConfiguration.Tokeniser.Token?, effectiveRange: NSRange
-    )? {
+    func token(on line: Int, at position: Int) -> (token: LanguageConfiguration.Tokeniser.Token?, effectiveRange: NSRange)? {
         guard let lineMap = (delegate as? CodeStorageDelegate)?.lineMap,
             let lineInfo = lineMap.lookup(line: line),
             let tokens = lineInfo.info?.tokens
